@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+body {
+  font-family: "Helvetica Neue", Helvetica, sans-serif;
+  margin: 30px auto;
+  width: 1280px;
+  position: relative;
+}
+
+header {
+  padding: 6px 0;
+}
+
+.group {
+  margin-bottom: 1em;
+}
+
+.axis {
+  font: 10px sans-serif;
+  position: fixed;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.axis text {
+  -webkit-transition: fill-opacity 250ms linear;
+}
+
+.axis path {
+  display: none;
+}
+
+.axis line {
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.axis.top {
+  background-image: linear-gradient(top, #fff 0%, rgba(255,255,255,0) 100%);
+  background-image: -o-linear-gradient(top, #fff 0%, rgba(255,255,255,0) 100%);
+  background-image: -moz-linear-gradient(top, #fff 0%, rgba(255,255,255,0) 100%);
+  background-image: -webkit-linear-gradient(top, #fff 0%, rgba(255,255,255,0) 100%);
+  background-image: -ms-linear-gradient(top, #fff 0%, rgba(255,255,255,0) 100%);
+  top: 0px;
+  padding: 0 0 24px 0;
+}
+
+.axis.bottom {
+  background-image: linear-gradient(bottom, #fff 0%, rgba(255,255,255,0) 100%);
+  background-image: -o-linear-gradient(bottom, #fff 0%, rgba(255,255,255,0) 100%);
+  background-image: -moz-linear-gradient(bottom, #fff 0%, rgba(255,255,255,0) 100%);
+  background-image: -webkit-linear-gradient(bottom, #fff 0%, rgba(255,255,255,0) 100%);
+  background-image: -ms-linear-gradient(bottom, #fff 0%, rgba(255,255,255,0) 100%);
+  bottom: 0px;
+  padding: 24px 0 0 0;
+}
+
+.horizon {
+  border-bottom: solid 1px #000;
+  overflow: hidden;
+  position: relative;
+}
+
+.horizon {
+  border-top: solid 1px #000;
+  border-bottom: solid 1px #000;
+}
+
+.horizon + .horizon {
+  border-top: none;
+}
+
+.horizon canvas {
+  display: block;
+}
+
+.horizon .title,
+.horizon .value {
+  bottom: 0;
+  line-height: 30px;
+  margin: 0 6px;
+  position: absolute;
+  text-shadow: 0 1px 0 rgba(255,255,255,.5);
+  white-space: nowrap;
+}
+
+.horizon .title {
+  left: 0;
+}
+
+.horizon .value {
+  right: 0;
+}
+
+.line {
+  background: #000;
+  z-index: 2;
+}
+
+</style>
+<script src="d3.v2.min.js" charset="utf-8"></script>
+<script src="cubism.v1.min.js"></script>
+<body id="demo">
+<script>
+    var stocksMap = new Map();
+
+    var stArr  =["AAPL", "BIDU", "GOOG", "ORCL", "WUBA", "WBAT", "XXII", "DDD", "ABT", "ACN", "AGRO", "AAP", "ABT", "ACN", "AGRO", "AAP"];
+
+
+var ws = new WebSocket("ws://localhost:9000/ws");
+//var ws = new WebSocket(@routes.Application.ws.webSocketURL(request));
+
+        ws.onopen = function(){
+            // Web Socket is connected, send data using send()
+            console.log("connected at " + Date.now());
+            //ws.send(JSON.stringify({"symbol": "BIDU"}));
+            for(stockTicker in stArr){
+                console.log(stockTicker)
+                ws.send(JSON.stringify({"symbol": stArr[stockTicker]}));
+            }
+        };
+
+        ws.onmessage = function (event){
+            console.log(event.data);
+            var message = JSON.parse(event.data);
+            if(message.type == "stockupdate"){
+                var values = stocksMap.get(message.symbol);
+                if (typeof(values) != "undefined"){
+                    values.push(message.price)
+                    values = values.slice(context.size())
+                }
+            } else if(message.type == "stockhistory") {
+                var values = stocksMap.get(message.symbol);
+                if (typeof(values) != "undefined"){
+                    stocksMap.set(message.symbol, message.history);
+                }
+            }
+        };
+
+        ws.onclose = function(){
+            // websocket is closed.
+            alert("Connection is closed...");
+        };
+
+
+var context = cubism.context()
+    .serverDelay(0)
+    .clientDelay(0)
+    .step(1e3) //every second
+    .size(1280);
+
+d3.select("#demo").selectAll(".axis")
+    .data(["top", "bottom"])
+  .enter().append("div")
+    .attr("class", function(d) { return d + " axis"; })
+    .each(function(d) { d3.select(this).call(context.axis().ticks(12).orient(d)); });
+
+d3.select("body").append("div")
+    .attr("class", "rule")
+    .call(context.rule());
+
+d3.select("body").selectAll(".horizon")
+    .data(stArr.map(stock))
+  .enter().insert("div", ".bottom")
+    .attr("class", "horizon")
+  .call(context.horizon()
+    .height(30)
+          .extent([0,1000])
+
+    );
+
+context.on("focus", function(i) {
+  d3.selectAll(".value").style("right", i == null ? null : context.size() - i + "px");
+});
+
+// Replace this with context.graphite and graphite.metric!
+function stock(name) {
+    var format = d3.time.format("%d-%b-%y");
+    stocksMap.set(name,[]);
+
+    return context.metric(function(start,stop,step,callback){
+      console.log("Calling at " + Date.now());
+      console.log("For: " + name + " From: " + start + " To: " + stop);
+      var values = stocksMap.get(name);
+      console.log(values);
+      callback(null, values = values.slice((start-stop)/step));
+    },name);
+}
+
+    var contextComp = cubism.context()
+        .serverDelay(0)
+        .clientDelay(0)
+        .step(1e3)
+        .size(1280);
+
+    var comparison = contextComp.comparison();
+
+    var s1 = stock("BIDU");
+    var s2 = stock("BIDU").multiply(-3);
+
+    d3.select("body").selectAll(".comparison")
+            .data([[s1,s2]])
+            .enter().append("div")
+            .attr("class","comparison")
+            .call(comparison);
+
+    d3.select("body").append("div")
+            .attr("class", "rule")
+            .call(contextComp.rule());
+
+//    contextComp.on("focus", function(i) {
+//        d3.selectAll(".value").style("right", i == null ? null : contextComp.size() - i + "px");
+//    });
+
+
+
+</script>
